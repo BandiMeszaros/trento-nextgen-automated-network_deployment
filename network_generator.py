@@ -107,9 +107,9 @@ class Router:
 
     def host(self, hostname):
         """returns the host if it is connected"""
-        for h in self.connected_hosts:
-            if h.hostname == hostname:
-                return h
+        for hn, v in self.connected_hosts.items():
+            if hn == hostname:
+                return v[0]
 
         return f"No host called: {hostname}"
 
@@ -118,6 +118,18 @@ class Network:
     def __init__(self, name):
         self.name = name
         self.routers = []
+        self.network_generator = NetworkGenerator()
+
+    def compose_vagrantfile(self, filename= "Vagrantfile", path="./network"):
+        """generates a vagrantfile"""
+
+        for router in self.routers:
+            self.network_generator.add_line(router.add_router_to_vagrant)
+
+            for hn, v in router.connected_hosts.items():
+                self.network_generator.add_line(v[0].add_host_to_vagrant)
+
+        self.network_generator.save_to_file(filename, path)
 
     def link_two_router(self, link_name, to_router_name, from_router_name):
         """links two router, just a wrapper"""
@@ -128,7 +140,6 @@ class Network:
         # defining the link between the two routers
         self.router(to_router_name).define_link(link_name, from_router_name)
         self.router(from_router_name).define_link(link_name, to_router_name)
-
 
     def router(self, router_name):
         """
@@ -164,8 +175,8 @@ class Network:
             list(map(lambda x: print(x), self.routers))
 
 class NetworkGenerator:
-    def __init__(self, name):
-        self.name = name
+
+    def __init__(self):
         self.vagrant_file = ''
         self.open_template()
 
