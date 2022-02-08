@@ -15,9 +15,9 @@ class Host:
         return_string = f'  config.vm.define "{self.hostname}" do |{self.hostname}|\n    ' \
                         f'{self.hostname}.vm.box = "ubuntu/bionic64"\n    ' \
                         f'{self.hostname}.vm.hostname = "{self.hostname}"\n    ' \
-                        f'{self.hostname}.vm.network "private_network", virtualbox_intnet: "{self.link}"' \
+                        f'{self.hostname}.vm.network "private_network", virtualbox__intnet: "{self.link}"' \
                         f', auto_config: false\n    ' \
-                        f'{self.hostname}.vm.provision "shell" path: "host.sh"\n    ' \
+                        f'{self.hostname}.vm.provision "shell", path: "host.sh"\n    ' \
                         f'{self.hostname}.vm.provider "virtualbox" do |vb|\n      ' \
                         f'vb.memory = 256\n    ' \
                         f'end\n  ' \
@@ -62,7 +62,7 @@ class Router:
             print("can't do it: less links than hosts")
         else:
             for i in range(0, hosts):
-                hostname = self.router_name + f"_host{i}"
+                hostname = self.router_name + f"host{i}"
                 link_name = f"broadcast_host{i}"
                 self.connected_hosts[f"host{i}"] = (Host(hostname, link_name), link_name)
                 self.link_conns.append(link_name)
@@ -74,17 +74,18 @@ class Router:
 
     def add_router_to_vagrant(self):
         """generates the string that will be included in the vagrantfile"""
-        return_string = f'  config.vm.define {self.router_name} do |{self.router_name}|\n  ' \
-                        f'{self.router_name}.vm.box = "ubuntu/bionic64"\n  ' \
-                        f'{self.router_name}.vm.hostname = "{self.router_name}\n  '
+        return_string = f'  config.vm.define "{self.router_name}" do |{self.router_name}|\n    ' \
+                        f'{self.router_name}.vm.box = "ubuntu/bionic64"\n    ' \
+                        f'{self.router_name}.vm.hostname = "{self.router_name}"\n    '
         for L in self.link_conns:
             new_line = f'{self.router_name}.vm.network "private_network", virtualbox__intnet: "{L}", ' \
-                       f'auto_config: false\n  '
+                       f'auto_config: false\n    '
             return_string += new_line
 
-        return_string += f'{self.router_name}.vm.provision "shell", path: "router.sh"\n  ' \
-                         f'{self.router_name}.vm.provider "virtualbox" do |vb|\n    ' \
-                         f'vb.memory = 256\n' \
+        return_string += f'{self.router_name}.vm.provision "shell", path: "router.sh"\n    ' \
+                         f'{self.router_name}.vm.provider "virtualbox" do |vb|\n      ' \
+                         f'vb.memory = 256\n    ' \
+                         f'end\n  ' \
                          f'end'
 
         return return_string
@@ -124,10 +125,12 @@ class Network:
         """generates a vagrantfile"""
 
         for router in self.routers:
-            self.network_generator.add_line(router.add_router_to_vagrant)
+            self.network_generator.add_line(router.add_router_to_vagrant())
 
             for hn, v in router.connected_hosts.items():
-                self.network_generator.add_line(v[0].add_host_to_vagrant)
+                self.network_generator.add_line(v[0].add_host_to_vagrant())
+
+        self.network_generator.add_line("end")
 
         self.network_generator.save_to_file(filename, path)
 
@@ -200,14 +203,15 @@ class NetworkGenerator:
 
 if __name__ == '__main__':
     N = Network("TestNetwork")
-    N.add_router("test_router1", 5, 3)
-    N.add_router("test_router2", 2, 2)
-    N.add_router("test_router3", 2, 2)
+    N.add_router("testrouter1", 5, 3)
+    N.add_router("testrouter2", 2, 2)
+    N.add_router("testrouter3", 2, 2)
     print(N.list_routers())
-    N.router("test_router2").add_link("broadcast_test_router1_link0")
-    N.router("test_router2").define_link("broadcast_test_router1_link0", "test_router1")
-    N.router("test_router1").define_link("broadcast_test_router1_link0", "test_router2")
-    N.router("test_router3").add_link("broadcast_test_router1_link1")
-    N.router("test_router3").define_link("broadcast_test_router1_link1", "test_router1")
-    N.router("test_router1").define_link("broadcast_test_router1_link1", "test_router3")
+    N.router("testrouter2").add_link("broadcast_test_router1_link0")
+    N.router("testrouter2").define_link("broadcast_test_router1_link0", "test_router1")
+    N.router("testrouter1").define_link("broadcast_test_router1_link0", "test_router2")
+    N.router("testrouter3").add_link("broadcast_test_router1_link1")
+    N.router("testrouter3").define_link("broadcast_test_router1_link1", "test_router1")
+    N.router("testrouter1").define_link("broadcast_test_router1_link1", "test_router3")
     N.print_network()
+    N.compose_vagrantfile()
