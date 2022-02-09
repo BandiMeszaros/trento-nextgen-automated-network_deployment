@@ -1,5 +1,6 @@
 import os
-
+import pickle
+import copy
 class Host:
     def __str__(self):
         return self.hostname
@@ -8,7 +9,6 @@ class Host:
         self.hostname = hostname
         # link has to exist before creating host
         self.link = link
-
 
     def add_host_to_vagrant(self):
         """this function adds the host to the vagrantfile"""
@@ -114,14 +114,38 @@ class Router:
 
         return f"No host called: {hostname}"
 
+    def delete_host(self, hostname):
+        """removes host from the router"""
+
+        if hostname in self.connected_hosts.keys():
+            host, link = self.connected_hosts[hostname]
+            self.link_conns.remove(link)
+            del self.connected_hosts[hostname]
+            self.host_no -= 1
+            self.link_no -= 1
+            print(f"{hostname} has been removed from router {self.router_name}")
+        else:
+            print(f"No such host: {hostname}")
+
+    def delete_router_link(self, linkname):
+        """removes link from the router"""
+
+        if linkname in self.link_conns:
+            self.link_conns.remove(linkname)
+            for name, k in self.connected_routers.items():
+                if k[1] == linkname:
+                    del self.connected_routers[name]
+                    print(f"{linkname} link has been reomeved")
+                    self.link_no -= 1
+
 class Network:
     """creates a network"""
-    def __init__(self, name):
+    def __init__(self, name=""):
         self.name = name
         self.routers = []
         self.network_generator = NetworkGenerator()
 
-    def compose_vagrantfile(self, filename= "Vagrantfile", path="./network"):
+    def compose_vagrantfile(self, filename="Vagrantfile", path="./network"):
         """generates a vagrantfile"""
 
         for router in self.routers:
@@ -143,6 +167,15 @@ class Network:
         # defining the link between the two routers
         self.router(to_router_name).define_link(link_name, from_router_name)
         self.router(from_router_name).define_link(link_name, to_router_name)
+
+    def unlink_to_router(self, link_name, router_name1, router_name2):
+        """deletes connections between two routers"""
+
+        router1 = self.router(router_name1)
+        router2 = self.router(router_name2)
+
+        router1.delete_router_link(link_name)
+        router2.delete_router_link(link_name)
 
     def router(self, router_name):
         """
@@ -177,6 +210,34 @@ class Network:
             print("Router(s) by name")
             list(map(lambda x: print(x), self.routers))
 
+    def save_network(self, file_root, file_name=""):
+        """saves the created network to a pickle file"""
+
+        if file_name == "":
+            file_name = f"{self.name}_network.pickle"
+        if not os.path.isdir(file_root):
+            os.makedirs(file_root)
+
+        file_address = os.path.join(file_root, file_name)
+
+        with open(file_address, "wb") as file:
+            pickle.dump(self, file)
+
+    def load_network(self, file_name, file_root="./network/pickles"):
+
+        file_address = os.path.join(file_root, file_name)
+
+        with open(file_address, "rb") as file:
+            loaded_network = pickle.load(file)
+
+        print("Network successfully loaded...")
+        self.name = copy.deepcopy(loaded_network.name)
+        self.routers = copy.deepcopy(loaded_network.routers)
+        self.network_generator = copy.deepcopy(loaded_network.network_generator)
+
+        print("The loaded network looks like this:")
+        self.print_network()
+
 class NetworkGenerator:
 
     def __init__(self):
@@ -202,16 +263,9 @@ class NetworkGenerator:
 
 
 if __name__ == '__main__':
-    N = Network("TestNetwork")
-    N.add_router("testrouter1", 5, 3)
-    N.add_router("testrouter2", 2, 2)
-    N.add_router("testrouter3", 2, 2)
+    N = Network()
+    N.add_router("testrouter0", 3, 2)
+    N.add_router("testrouter1", 2, 2)
+    N.link_two_router("broadcast_testrouter0_link0", "testrouter1", "testrouter0")
     print(N.list_routers())
-    N.router("testrouter2").add_link("broadcast_test_router1_link0")
-    N.router("testrouter2").define_link("broadcast_test_router1_link0", "test_router1")
-    N.router("testrouter1").define_link("broadcast_test_router1_link0", "test_router2")
-    N.router("testrouter3").add_link("broadcast_test_router1_link1")
-    N.router("testrouter3").define_link("broadcast_test_router1_link1", "test_router1")
-    N.router("testrouter1").define_link("broadcast_test_router1_link1", "test_router3")
     N.print_network()
-    N.compose_vagrantfile()
