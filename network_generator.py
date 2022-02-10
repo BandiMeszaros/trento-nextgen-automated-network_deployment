@@ -101,9 +101,17 @@ class Router:
         self.link_no += 1
         self.link_conns.append(link_name)
 
+    def add_new_host(self, link_name, host_name):
+        """Adds new host to the router, link has to be added before"""
+
+        if link_name in self.link_conns:
+            new_host = Host(host_name, link_name)
+            self.host_no += 1
+            self.connected_hosts[host_name] = (new_host, link_name)
+
     def list_hosts(self):
         """returns a list of the connected hosts"""
-        all_hosts = list(map(lambda x: x.hostname, self.connected_hosts))
+        all_hosts = list(map(lambda x: x[0].hostname, self.connected_hosts.values()))
         return all_hosts
 
     def host(self, hostname):
@@ -133,10 +141,11 @@ class Router:
         if linkname in self.link_conns:
             self.link_conns.remove(linkname)
             for name, k in self.connected_routers.items():
-                if k[1] == linkname:
+                if k == linkname:
                     del self.connected_routers[name]
                     print(f"{linkname} link has been reomeved")
                     self.link_no -= 1
+                    break
 
 class Network:
     """creates a network"""
@@ -145,7 +154,7 @@ class Network:
         self.routers = []
         self.network_generator = NetworkGenerator()
 
-    def compose_vagrantfile(self, filename="Vagrantfile", path="./network"):
+    def compose_vagrantfile(self, path):
         """generates a vagrantfile"""
 
         for router in self.routers:
@@ -156,7 +165,7 @@ class Network:
 
         self.network_generator.add_line("end")
 
-        self.network_generator.save_to_file(filename, path)
+        self.network_generator.save_to_file(path)
 
     def link_two_router(self, link_name, to_router_name, from_router_name):
         """links two router, just a wrapper"""
@@ -168,7 +177,7 @@ class Network:
         self.router(to_router_name).define_link(link_name, from_router_name)
         self.router(from_router_name).define_link(link_name, to_router_name)
 
-    def unlink_to_router(self, link_name, router_name1, router_name2):
+    def unlink_two_router(self, link_name, router_name1, router_name2):
         """deletes connections between two routers"""
 
         router1 = self.router(router_name1)
@@ -206,11 +215,12 @@ class Network:
         if (num := len(self.routers)) == 0:
             print("Empty network...")
         else:
+            print(f"This is the network called: {self.name}")
             print(f"There is {num} router(s) in the network")
             print("Router(s) by name")
             list(map(lambda x: print(x), self.routers))
 
-    def save_network(self, file_root, file_name=""):
+    def save_network(self, file_root="./network/pickles", file_name=""):
         """saves the created network to a pickle file"""
 
         if file_name == "":
@@ -251,21 +261,18 @@ class NetworkGenerator:
     def add_line(self, new_line):
         self.vagrant_file = self.vagrant_file + new_line + "\n"
 
-    def save_to_file(self, filename="Vagrantfile", path="./network"):
+    def save_to_file(self, path="./network"):
         """Saves the content of vagrant_file to a Vagrantfile"""
+
+        filename = "Vagrantfile"
         if not os.path.exists(path):
             os.makedirs(path)
 
         file_root = os.path.join(path, filename)
 
+        if os.path.isfile(file_root):
+            os.remove(file_root)
+
         with open(file_root, "w") as f:
             f.write(self.vagrant_file)
 
-
-if __name__ == '__main__':
-    N = Network()
-    N.add_router("testrouter0", 3, 2)
-    N.add_router("testrouter1", 2, 2)
-    N.link_two_router("broadcast_testrouter0_link0", "testrouter1", "testrouter0")
-    print(N.list_routers())
-    N.print_network()
