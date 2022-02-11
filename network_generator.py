@@ -22,10 +22,6 @@ class Link:
     def set_bw(self, bw_value):
         self.bandwidth = bw_value
 
-    def generate_emulator_info(self):
-        """it creates a command string that sets the network emulator settings"""
-        pass
-
 class Host:
     def __str__(self):
         return self.hostname
@@ -39,13 +35,6 @@ class Host:
     def generate_ip(self):
 
         return self.link.network.rstrip('.0') + '.22'
-
-    def generate_provision_script(self, path):
-        """creates the provision script for the host"""
-
-        file_root = os.path.join(path, f"{self.hostname}.sh")
-        with open(file_root, "w") as f:
-            f.write("sudo echo ''")
 
     def generate_bootstrap_file(self, path):
         """generates the bootstrap.sh for the host machine"""
@@ -159,10 +148,13 @@ class Router:
                            f'broadcast {link[0].bc}\n' \
                             f'" >> /etc/network/interfaces\n'
 
-        file_content += '\n'
 
-        #todo: add delay and bandwith control
-        file_content += f"sudo reboot"
+        file_content += '\n'
+        file_content += f"sudo reboot\n"
+
+        for interface, link in self.interfaces.items():
+            file_content += f'sudo tc qdisc replace dev {interface} root netem delay {link[0].delay}ms rate ' \
+                            f'{link[0].bandwidth}Mbit\n'
         with open(file_root, "w") as f:
             f.write(file_content)
 

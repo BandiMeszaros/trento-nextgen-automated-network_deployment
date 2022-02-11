@@ -125,9 +125,12 @@ def composeV(config, path):
     if not os.path.exists(path):
         os.makedirs(path)
 
+    root = os.path.join(path, 'Vagrantfile')
+    if os.path.isfile(root):
+        os.remove(root)
     config.net.compose_vagrantfile(path)
     print(f"Vagrantfile generated....")
-    print(f"Saved at: {os.path.join(path, 'Vagrantfile')}")
+    print(f"Saved at: {root}")
 
 @spider.command()
 @config_pass
@@ -163,6 +166,10 @@ def unlink_routers(config, linkname, router1, router2):
 def add_link_to_router(config, new_link_name, router_name, delay, bandwidth):
     """Adds a link to the existing router"""
 
+    if delay is None:
+        delay = 0
+    if bandwidth is None:
+        bandwidth = 40
     config.net.add_link_to_router(router_name, new_link_name, delay, bandwidth)
     print(f"Created link {new_link_name}")
 
