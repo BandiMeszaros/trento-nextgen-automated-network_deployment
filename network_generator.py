@@ -1,7 +1,6 @@
 import os
 import pickle
 import copy
-import random
 
 class Link:
     def __str__(self):
@@ -48,12 +47,36 @@ class Host:
         with open(file_root, "w") as f:
             f.write("sudo echo ''")
 
+    def generate_bootstrap_file(self, path):
+        """generates the bootstrap.sh for the host machine"""
+
+        file_root = os.path.join(path, f"{self.hostname}.sh")
+
+        if not os.path.exists(path):
+            os.makedirs(path)
+
+        router = self.link.network.rstrip(".0") +".1"
+        file_content = f'sudo echo "auto eth1\n' \
+                       f'iface eth1 inet static\n' \
+                       f'address {self.ip}\n' \
+                       f'netmask {self.link.netmask}\n' \
+                       f'network {self.link.network}\n' \
+                       f'broadcast {self.link.bc}\n' \
+                       f'post-up route add -net 192.168.0.0 netmask 255.255.0.0 gw {router} dev eth1\n' \
+                       f'pre-down route del -net 192.168.0.0 netmask 255.255.0.0 gw {router} dev eth1\n"' \
+                       f' >> /etc/network/interfaces\n' \
+                       f'sudo reboot' \
+
+        with open(file_root, "w") as f:
+            f.write(file_content)
+
     def add_host_to_vagrant(self):
         """this function adds the host to the vagrantfile"""
         return_string = f'  config.vm.define "{self.hostname}" do |{self.hostname}|\n    ' \
                         f'{self.hostname}.vm.box = "ubuntu/trusty64"\n    ' \
                         f'{self.hostname}.vm.hostname = "{self.hostname}"\n    ' \
-                        f'{self.hostname}.vm.network "private_network", virtualbox__intnet: "{self.link}"' \
+                        f'{self.hostname}.vm.network "private_network", virtualbox__intnet: "{self.link}", ' \
+                        f'ip: "{self.ip}"' \
                         f', auto_config: false\n    ' \
                         f'{self.hostname}.vm.provision "shell", path: "{self.hostname}.sh"\n    ' \
                         f'{self.hostname}.vm.provider "virtualbox" do |vb|\n      ' \
@@ -95,7 +118,7 @@ class Router:
         self.connected_hosts = {}
         self.link_conns = []
         self.link_no = 0
-        self.interfaces = {} #"interface_name" : (Link,IP)
+        self.interfaces = {}  # "interface_name" : (Link,IP)
         self.interface_no = 0
         self.connected_routers = {}
 
@@ -104,18 +127,45 @@ class Router:
         return_string = f'  config.vm.define "{self.router_name}" do |{self.router_name}|\n    ' \
                         f'{self.router_name}.vm.box = "ubuntu/trusty64"\n    ' \
                         f'{self.router_name}.vm.hostname = "{self.router_name}"\n    '
-        for L in self.link_conns:
-            new_line = f'{self.router_name}.vm.network "private_network", virtualbox__intnet: "{L}", ' \
-                       f'auto_config: false\n    '
+        for interface, li in self.interfaces.items():
+            L = li[0].name
+            new_line = f'{self.router_name}.vm.network "private_network", virtualbox__intnet: "{L}", ip: "{li[1]}"' \
+                       f', auto_config: false\n    '
             return_string += new_line
 
-        return_string += f'{self.router_name}.vm.provision "shell", path: "router.sh"\n    ' \
+        return_string += f'{self.router_name}.vm.provision "shell", path: "{self.router_name}.sh"\n    ' \
                          f'{self.router_name}.vm.provider "virtualbox" do |vb|\n      ' \
                          f'vb.memory = 256\n    ' \
                          f'end\n  ' \
                          f'end'
 
         return return_string
+
+    def generate_bootstrap_file(self, path):
+        """generates bootstrap.sh file """
+        file_root = os.path.join(path, f"{self.router_name}.sh")
+
+        if not os.path.exists(path):
+            os.makedirs(path)
+
+
+        file_content = 'sudo echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf\n\n'
+        for interface, link in self.interfaces.items():
+            file_content += f'sudo echo "auto {interface}\n' \
+                           f'iface {interface} inet static\n' \
+                           f'address {link[1]}\n' \
+                           f'netmask {link[0].netmask}\n' \
+                           f'network {link[0].network}\n' \
+                           f'broadcast {link[0].bc}\n' \
+                            f'" >> /etc/network/interfaces\n'
+
+        file_content += '\n'
+
+        #todo: add delay and bandwith control
+        file_content += f"sudo reboot"
+        with open(file_root, "w") as f:
+            f.write(file_content)
+
 
     def define_link(self, link_name, other_router):
         """if link_name is an existing link, defines connection"""
@@ -188,7 +238,7 @@ class Router:
             for name, k in self.connected_routers.items():
                 if k == linkname:
                     del self.connected_routers[name]
-                    print(f"{linkname} link has been reomeved")
+                    print(f"{linkname} link has been removed")
                     self.link_no -= 1
                     break
 
@@ -223,9 +273,11 @@ class Network:
 
         for router in self.routers:
             self.network_generator.add_line(router.add_router_to_vagrant())
+            router.generate_bootstrap_file(path)
 
             for hn, v in router.connected_hosts.items():
                 self.network_generator.add_line(v[0].add_host_to_vagrant())
+                v[0].generate_bootstrap_file(path)
 
         self.network_generator.add_line("end")
 
@@ -297,7 +349,7 @@ class Network:
     def save_network(self, file_root="./network/pickles", file_name=""):
         """saves the created network to a pickle file"""
 
-        if file_name == "":
+        if file_name == "" or file_name is None:
             file_name = f"{self.name}_network.pickle"
         if not os.path.isdir(file_root):
             os.makedirs(file_root)
@@ -322,7 +374,7 @@ class Network:
         print("The loaded network looks like this:")
         self.print_network()
 
-    def add_host_to_router(self,router_name, host_name, link_name):
+    def add_host_to_router(self, router_name, host_name, link_name):
         """adds a host to the selected router, the user needs to define the link name"""
         self.router(router_name).add_new_host(link_name, host_name)
         print("added host to router...")
@@ -371,4 +423,4 @@ if __name__ == '__main__':
     n.add_host_to_router("r2", "hostr21", "routernetA")
     n.add_link_to_router("r2", "connectRouters")
     n.link_two_router("connectRouters", "r1", "r2")
-    n.print_network()
+    n.compose_vagrantfile("/testfoldaer")

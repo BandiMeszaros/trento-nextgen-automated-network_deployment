@@ -39,9 +39,6 @@ class Config:
             pickle.dump(self.net, file)
             file.close()
 
-
-
-
 config_pass = click.make_pass_decorator(Config, ensure=True)
 
 @click.group()
@@ -81,16 +78,14 @@ def print_net(config):
 
 @spider.command()
 @click.argument("router_name")
-@click.argument("links_number", type=int)
-@click.argument("hosts_number", type=int)
 @config_pass
-def add_router(config, router_name, links_number, hosts_number):
+def add_router(config, router_name):
     """Adds router to the network, hosts number and links number has to be defined
 
     ------
 
     Hosts number cannot be greater than links number"""
-    config.net.add_router(router_name, links_number, hosts_number)
+    config.net.add_router(router_name)
 
 @spider.command()
 @config_pass
@@ -163,11 +158,12 @@ def unlink_routers(config, linkname, router1, router2):
 @config_pass
 @click.argument("router_name")
 @click.argument("new_link_name")
-def add_link_to_router(config,new_link_name,router_name):
+@click.argument("bandwidth", required=False, type=int)
+@click.argument("delay", required=False, type=int)
+def add_link_to_router(config, new_link_name, router_name, delay, bandwidth):
     """Adds a link to the existing router"""
 
-    router = config.net.router(router_name)
-    router.add_link(new_link_name)
+    config.net.add_link_to_router(router_name, new_link_name, delay, bandwidth)
     print(f"Created link {new_link_name}")
 
 @spider.command()
