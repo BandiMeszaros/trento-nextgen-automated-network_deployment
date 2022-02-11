@@ -1,6 +1,32 @@
 import os
 import pickle
 import copy
+import random
+
+class Link:
+    def __str__(self):
+        return self.name
+
+    def __init__(self, name, net, delay, bw):
+        self.name = name
+        self.netmask = "255.255.255.0"
+        self.network = f"192.168.{net}.0"
+        self.bc = f"192.168.{net}.255"
+        # delay in ms
+        self.delay = delay
+        # bandwidth in Mbits
+        self.bandwidth = bw
+
+    def set_delay(self, delay_value):
+        self.delay = delay_value
+
+    def set_bw(self, bw_value):
+        self.bandwidth = bw_value
+
+    def generate_emulator_info(self):
+        """it creates a command string that sets the network emulator settings"""
+        pass
+
 class Host:
     def __str__(self):
         return self.hostname
@@ -9,15 +35,27 @@ class Host:
         self.hostname = hostname
         # link has to exist before creating host
         self.link = link
+        self.ip = self.generate_ip()
+
+    def generate_ip(self):
+
+        return self.link.network.rstrip('.0') + '.22'
+
+    def generate_provision_script(self, path):
+        """creates the provision script for the host"""
+
+        file_root = os.path.join(path, f"{self.hostname}.sh")
+        with open(file_root, "w") as f:
+            f.write("sudo echo ''")
 
     def add_host_to_vagrant(self):
         """this function adds the host to the vagrantfile"""
         return_string = f'  config.vm.define "{self.hostname}" do |{self.hostname}|\n    ' \
-                        f'{self.hostname}.vm.box = "ubuntu/bionic64"\n    ' \
+                        f'{self.hostname}.vm.box = "ubuntu/trusty64"\n    ' \
                         f'{self.hostname}.vm.hostname = "{self.hostname}"\n    ' \
                         f'{self.hostname}.vm.network "private_network", virtualbox__intnet: "{self.link}"' \
                         f', auto_config: false\n    ' \
-                        f'{self.hostname}.vm.provision "shell", path: "host.sh"\n    ' \
+                        f'{self.hostname}.vm.provision "shell", path: "{self.hostname}.sh"\n    ' \
                         f'{self.hostname}.vm.provider "virtualbox" do |vb|\n      ' \
                         f'vb.memory = 256\n    ' \
                         f'end\n  ' \
@@ -51,31 +89,20 @@ class Router:
 
         return return_string
 
-    def __init__(self, name, hosts, links):
+    def __init__(self, name):
         self.router_name = name
-        self.host_no = hosts
+        self.host_no = 0
         self.connected_hosts = {}
         self.link_conns = []
-        self.link_no = links
+        self.link_no = 0
+        self.interfaces = {} #"interface_name" : (Link,IP)
+        self.interface_no = 0
         self.connected_routers = {}
-        if self.link_no < self.host_no:
-            print("can't do it: less links than hosts")
-        else:
-            for i in range(0, hosts):
-                hostname = self.router_name + f"host{i}"
-                link_name = f"broadcast_host{i}"
-                self.connected_hosts[f"host{i}"] = (Host(hostname, link_name), link_name)
-                self.link_conns.append(link_name)
-
-            if links_left := self.link_no - self.host_no:
-
-                for link in range(0, links_left):
-                    self.link_conns.append(f"broadcast_{self.router_name}_link{link}")
 
     def add_router_to_vagrant(self):
         """generates the string that will be included in the vagrantfile"""
         return_string = f'  config.vm.define "{self.router_name}" do |{self.router_name}|\n    ' \
-                        f'{self.router_name}.vm.box = "ubuntu/bionic64"\n    ' \
+                        f'{self.router_name}.vm.box = "ubuntu/trusty64"\n    ' \
                         f'{self.router_name}.vm.hostname = "{self.router_name}"\n    '
         for L in self.link_conns:
             new_line = f'{self.router_name}.vm.network "private_network", virtualbox__intnet: "{L}", ' \
@@ -96,18 +123,25 @@ class Router:
         if link_name in self.link_conns:
             self.connected_routers[other_router] = link_name
 
-    def add_link(self, link_name):
+    def add_link(self, link_name, net, delay=0, bw=40):
         """Adds a link to the router"""
         self.link_no += 1
         self.link_conns.append(link_name)
+        link_obj = Link(link_name, net, delay, bw)
+        link_ip_router = f"192.168.{net}.1"
+        self.interface_no += 1
+        self.interfaces[f"eth{self.interface_no}"] = (link_obj, link_ip_router)
 
     def add_new_host(self, link_name, host_name):
         """Adds new host to the router, link has to be added before"""
 
         if link_name in self.link_conns:
-            new_host = Host(host_name, link_name)
-            self.host_no += 1
-            self.connected_hosts[host_name] = (new_host, link_name)
+            for interface, link in self.interfaces.items():
+                if link[0].name == link_name:
+                    new_host = Host(host_name, link[0])
+                    self.host_no += 1
+                    self.connected_hosts[host_name] = (new_host, link_name)
+                    break
 
     def list_hosts(self):
         """returns a list of the connected hosts"""
@@ -131,6 +165,17 @@ class Router:
             del self.connected_hosts[hostname]
             self.host_no -= 1
             self.link_no -= 1
+            to_be_deleted = []
+
+            for interface, li in self.interfaces.items():
+                if li[0].name == link:
+                    to_be_deleted.append(interface)
+
+            for i in to_be_deleted:
+                del self.interfaces[i]
+
+            self.interface_no -= 1
+
             print(f"{hostname} has been removed from router {self.router_name}")
         else:
             print(f"No such host: {hostname}")
@@ -147,12 +192,31 @@ class Router:
                     self.link_no -= 1
                     break
 
+            to_be_deleted = []
+            for interface, li in self.interfaces.items():
+                if li[0].name == linkname:
+                    to_be_deleted.append(interface)
+
+            for i in to_be_deleted:
+                del self.interfaces[i]
+
+            self.interface_no -= 1
 class Network:
     """creates a network"""
+
     def __init__(self, name=""):
         self.name = name
         self.routers = []
         self.network_generator = NetworkGenerator()
+        self.nets = 0
+
+    def add_link_to_router(self, router_name, link_name, delay=0, bw=40):
+        """adds a link to the router"""
+        r = self.router(router_name)
+        self.nets += 1
+        net = self.nets
+        r.add_link(link_name, net, delay, bw)
+        print(f"Link called {link_name} has been added to the {router_name}...")
 
     def compose_vagrantfile(self, path):
         """generates a vagrantfile"""
@@ -171,7 +235,16 @@ class Network:
         """links two router, just a wrapper"""
 
         # adding link to the to_router
-        self.router(to_router_name).add_link(link_name)
+        delay = 0
+        bw = 40
+        to_router = self.router(to_router_name)
+        for interface, li in to_router.interfaces.items():
+            if link_name == li[0].name:
+                delay = li[0].delay
+                bw = li[0].bandwith
+                break
+        self.nets += 1
+        self.router(to_router_name).add_link(link_name, self.nets, delay, bw)
 
         # defining the link between the two routers
         self.router(to_router_name).define_link(link_name, from_router_name)
@@ -205,8 +278,9 @@ class Network:
         all_routers = list(map(lambda x: x.router_name, self.routers))
         return all_routers
 
-    def add_router(self, router_name, router_links, router_hosts):
-        new_router = Router(router_name, router_hosts, router_links)
+    def add_router(self, router_name):
+
+        new_router = Router(router_name)
         self.routers.append(new_router)
         print(f"{router_name} has been added to the network...")
 
@@ -248,6 +322,12 @@ class Network:
         print("The loaded network looks like this:")
         self.print_network()
 
+    def add_host_to_router(self,router_name, host_name, link_name):
+        """adds a host to the selected router, the user needs to define the link name"""
+        self.router(router_name).add_new_host(link_name, host_name)
+        print("added host to router...")
+
+
 class NetworkGenerator:
 
     def __init__(self):
@@ -276,3 +356,19 @@ class NetworkGenerator:
         with open(file_root, "w") as f:
             f.write(self.vagrant_file)
 
+
+if __name__ == '__main__':
+
+    n = Network("test")
+    n.add_router("r1")
+    n.print_network()
+    n.add_link_to_router("r1", "netA", 100, 20)
+    n.add_host_to_router("r1", "host1", "netA")
+    n.add_link_to_router("r1", "netB", 0, 30)
+    n.add_host_to_router("r1", "host1", "netB")
+    n.add_router("r2")
+    n.add_link_to_router("r2", "routernetA")
+    n.add_host_to_router("r2", "hostr21", "routernetA")
+    n.add_link_to_router("r2", "connectRouters")
+    n.link_two_router("connectRouters", "r1", "r2")
+    n.print_network()
