@@ -82,8 +82,10 @@ class Router:
                         f"Links by Name:\n"
 
         for L in self.link_conns:
-            new_line = "> " + L + "\n"
-            return_string += new_line
+            for i, link in self.interfaces.items():
+                if L == link[0].name:
+                    new_line = "> " + L + f"  delay:{link[0].delay} bw:{link[0].bandwidth}\n"
+                    return_string += new_line
 
         return_string = return_string + f"Number of Hosts: {self.host_no}\n" \
                                         f"Hosts by Name, Host.name and links to them:\n"
@@ -123,6 +125,8 @@ class Router:
             return_string += new_line
 
         return_string += f'{self.router_name}.vm.provision "shell", path: "{self.router_name}.sh"\n    ' \
+                         f'{self.router_name}.vm.provision "shell", run: "always", ' \
+                         f'path: "{self.router_name}_netem.sh"\n    '\
                          f'{self.router_name}.vm.provider "virtualbox" do |vb|\n      ' \
                          f'vb.memory = 256\n    ' \
                          f'end\n  ' \
@@ -133,10 +137,10 @@ class Router:
     def generate_bootstrap_file(self, path):
         """generates bootstrap.sh file """
         file_root = os.path.join(path, f"{self.router_name}.sh")
+        net_set_root = os.path.join(path, f"{self.router_name}_netem.sh")
 
         if not os.path.exists(path):
             os.makedirs(path)
-
 
         file_content = 'sudo echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf\n\n'
         for interface, link in self.interfaces.items():
@@ -148,15 +152,19 @@ class Router:
                            f'broadcast {link[0].bc}\n' \
                             f'" >> /etc/network/interfaces\n'
 
-
         file_content += '\n'
         file_content += f"sudo reboot\n"
 
+        speed_control = ""
         for interface, link in self.interfaces.items():
-            file_content += f'sudo tc qdisc replace dev {interface} root netem delay {link[0].delay}ms rate ' \
+            speed_control += f'sudo tc qdisc replace dev {interface} root netem delay {link[0].delay}ms rate ' \
                             f'{link[0].bandwidth}Mbit\n'
+
         with open(file_root, "w") as f:
             f.write(file_content)
+
+        with open(net_set_root, "w") as f:
+            f.write(speed_control)
 
 
     def define_link(self, link_name, other_router):
@@ -165,12 +173,17 @@ class Router:
         if link_name in self.link_conns:
             self.connected_routers[other_router] = link_name
 
-    def add_link(self, link_name, net, delay=0, bw=40):
+    def add_link(self, link_name, net, delay=0, bw=40, linking=False):
         """Adds a link to the router"""
+
+        if not linking:
+            link_ip_router = f"192.168.{net}.1"
+        else:
+            link_ip_router = f"192.168.{net}.11"
+
         self.link_no += 1
         self.link_conns.append(link_name)
         link_obj = Link(link_name, net, delay, bw)
-        link_ip_router = f"192.168.{net}.1"
         self.interface_no += 1
         self.interfaces[f"eth{self.interface_no}"] = (link_obj, link_ip_router)
 
@@ -275,24 +288,28 @@ class Network:
 
         self.network_generator.save_to_file(path)
 
-    def link_two_router(self, link_name, to_router_name, from_router_name):
+    def link_two_router(self, link_name, new_router_name, owner_router_name):
         """links two router, just a wrapper"""
 
         # adding link to the to_router
+        # default values
         delay = 0
         bw = 40
-        to_router = self.router(to_router_name)
-        for interface, li in to_router.interfaces.items():
+
+        owner_router = self.router(owner_router_name)
+        for interface, li in owner_router.interfaces.items():
             if link_name == li[0].name:
                 delay = li[0].delay
-                bw = li[0].bandwith
+                bw = li[0].bandwidth
+                net = li[0].network.split('.')[2]
                 break
-        self.nets += 1
-        self.router(to_router_name).add_link(link_name, self.nets, delay, bw)
+
+        new_router = self.router(new_router_name)
+        new_router.add_link(link_name, net, delay, bw, True)
 
         # defining the link between the two routers
-        self.router(to_router_name).define_link(link_name, from_router_name)
-        self.router(from_router_name).define_link(link_name, to_router_name)
+        self.router(owner_router_name).define_link(link_name, new_router_name)
+        self.router(new_router_name).define_link(link_name, owner_router_name)
 
     def unlink_two_router(self, link_name, router_name1, router_name2):
         """deletes connections between two routers"""
