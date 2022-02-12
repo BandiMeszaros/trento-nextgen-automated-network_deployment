@@ -1,6 +1,27 @@
 import os
 import pickle
 import copy
+
+class Link:
+    def __str__(self):
+        return self.name
+
+    def __init__(self, name, net, delay, bw):
+        self.name = name
+        self.netmask = "255.255.255.0"
+        self.network = f"192.168.{net}.0"
+        self.bc = f"192.168.{net}.255"
+        # delay in ms
+        self.delay = delay
+        # bandwidth in Mbits
+        self.bandwidth = bw
+
+    def set_delay(self, delay_value):
+        self.delay = delay_value
+
+    def set_bw(self, bw_value):
+        self.bandwidth = bw_value
+
 class Host:
     def __str__(self):
         return self.hostname
@@ -9,15 +30,44 @@ class Host:
         self.hostname = hostname
         # link has to exist before creating host
         self.link = link
+        self.ip = self.generate_ip()
+
+    def generate_ip(self):
+
+        return self.link.network.rstrip('.0') + '.22'
+
+    def generate_bootstrap_file(self, path):
+        """generates the bootstrap.sh for the host machine"""
+
+        file_root = os.path.join(path, f"{self.hostname}.sh")
+
+        if not os.path.exists(path):
+            os.makedirs(path)
+
+        router = self.link.network.rstrip(".0") +".1"
+        file_content = f'sudo echo "auto eth1\n' \
+                       f'iface eth1 inet static\n' \
+                       f'address {self.ip}\n' \
+                       f'netmask {self.link.netmask}\n' \
+                       f'network {self.link.network}\n' \
+                       f'broadcast {self.link.bc}\n' \
+                       f'post-up route add -net 192.168.0.0 netmask 255.255.0.0 gw {router} dev eth1\n' \
+                       f'pre-down route del -net 192.168.0.0 netmask 255.255.0.0 gw {router} dev eth1\n"' \
+                       f' >> /etc/network/interfaces\n' \
+                       f'sudo reboot' \
+
+        with open(file_root, "w") as f:
+            f.write(file_content)
 
     def add_host_to_vagrant(self):
         """this function adds the host to the vagrantfile"""
         return_string = f'  config.vm.define "{self.hostname}" do |{self.hostname}|\n    ' \
-                        f'{self.hostname}.vm.box = "ubuntu/bionic64"\n    ' \
+                        f'{self.hostname}.vm.box = "ubuntu/trusty64"\n    ' \
                         f'{self.hostname}.vm.hostname = "{self.hostname}"\n    ' \
-                        f'{self.hostname}.vm.network "private_network", virtualbox__intnet: "{self.link}"' \
+                        f'{self.hostname}.vm.network "private_network", virtualbox__intnet: "{self.link}", ' \
+                        f'ip: "{self.ip}"' \
                         f', auto_config: false\n    ' \
-                        f'{self.hostname}.vm.provision "shell", path: "host.sh"\n    ' \
+                        f'{self.hostname}.vm.provision "shell", path: "{self.hostname}.sh"\n    ' \
                         f'{self.hostname}.vm.provider "virtualbox" do |vb|\n      ' \
                         f'vb.memory = 256\n    ' \
                         f'end\n  ' \
@@ -32,8 +82,10 @@ class Router:
                         f"Links by Name:\n"
 
         for L in self.link_conns:
-            new_line = "> " + L + "\n"
-            return_string += new_line
+            for i, link in self.interfaces.items():
+                if L == link[0].name:
+                    new_line = "> " + L + f"  delay:{link[0].delay} bw:{link[0].bandwidth}\n"
+                    return_string += new_line
 
         return_string = return_string + f"Number of Hosts: {self.host_no}\n" \
                                         f"Hosts by Name, Host.name and links to them:\n"
@@ -51,38 +103,30 @@ class Router:
 
         return return_string
 
-    def __init__(self, name, hosts, links):
+    def __init__(self, name):
         self.router_name = name
-        self.host_no = hosts
+        self.host_no = 0
         self.connected_hosts = {}
         self.link_conns = []
-        self.link_no = links
+        self.link_no = 0
+        self.interfaces = {}  # "interface_name" : (Link,IP)
+        self.interface_no = 0
         self.connected_routers = {}
-        if self.link_no < self.host_no:
-            print("can't do it: less links than hosts")
-        else:
-            for i in range(0, hosts):
-                hostname = self.router_name + f"host{i}"
-                link_name = f"broadcast_host{i}"
-                self.connected_hosts[f"host{i}"] = (Host(hostname, link_name), link_name)
-                self.link_conns.append(link_name)
-
-            if links_left := self.link_no - self.host_no:
-
-                for link in range(0, links_left):
-                    self.link_conns.append(f"broadcast_{self.router_name}_link{link}")
 
     def add_router_to_vagrant(self):
         """generates the string that will be included in the vagrantfile"""
         return_string = f'  config.vm.define "{self.router_name}" do |{self.router_name}|\n    ' \
-                        f'{self.router_name}.vm.box = "ubuntu/bionic64"\n    ' \
+                        f'{self.router_name}.vm.box = "ubuntu/trusty64"\n    ' \
                         f'{self.router_name}.vm.hostname = "{self.router_name}"\n    '
-        for L in self.link_conns:
-            new_line = f'{self.router_name}.vm.network "private_network", virtualbox__intnet: "{L}", ' \
-                       f'auto_config: false\n    '
+        for interface, li in self.interfaces.items():
+            L = li[0].name
+            new_line = f'{self.router_name}.vm.network "private_network", virtualbox__intnet: "{L}", ip: "{li[1]}"' \
+                       f', auto_config: false\n    '
             return_string += new_line
 
-        return_string += f'{self.router_name}.vm.provision "shell", path: "router.sh"\n    ' \
+        return_string += f'{self.router_name}.vm.provision "shell", path: "{self.router_name}.sh"\n    ' \
+                         f'{self.router_name}.vm.provision "shell", run: "always", ' \
+                         f'path: "{self.router_name}_netem.sh"\n    '\
                          f'{self.router_name}.vm.provider "virtualbox" do |vb|\n      ' \
                          f'vb.memory = 256\n    ' \
                          f'end\n  ' \
@@ -90,24 +134,69 @@ class Router:
 
         return return_string
 
+    def generate_bootstrap_file(self, path):
+        """generates bootstrap.sh file """
+        file_root = os.path.join(path, f"{self.router_name}.sh")
+        net_set_root = os.path.join(path, f"{self.router_name}_netem.sh")
+
+        if not os.path.exists(path):
+            os.makedirs(path)
+
+        file_content = 'sudo echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf\n\n'
+        for interface, link in self.interfaces.items():
+            file_content += f'sudo echo "auto {interface}\n' \
+                           f'iface {interface} inet static\n' \
+                           f'address {link[1]}\n' \
+                           f'netmask {link[0].netmask}\n' \
+                           f'network {link[0].network}\n' \
+                           f'broadcast {link[0].bc}\n' \
+                            f'" >> /etc/network/interfaces\n'
+
+        file_content += '\n'
+        file_content += f"sudo reboot\n"
+
+        speed_control = ""
+        for interface, link in self.interfaces.items():
+            speed_control += f'sudo tc qdisc replace dev {interface} root netem delay {link[0].delay}ms rate ' \
+                            f'{link[0].bandwidth}Mbit\n'
+
+        with open(file_root, "w") as f:
+            f.write(file_content)
+
+        with open(net_set_root, "w") as f:
+            f.write(speed_control)
+
+
     def define_link(self, link_name, other_router):
         """if link_name is an existing link, defines connection"""
 
         if link_name in self.link_conns:
             self.connected_routers[other_router] = link_name
 
-    def add_link(self, link_name):
+    def add_link(self, link_name, net, delay=0, bw=40, linking=False):
         """Adds a link to the router"""
+
+        if not linking:
+            link_ip_router = f"192.168.{net}.1"
+        else:
+            link_ip_router = f"192.168.{net}.11"
+
         self.link_no += 1
         self.link_conns.append(link_name)
+        link_obj = Link(link_name, net, delay, bw)
+        self.interface_no += 1
+        self.interfaces[f"eth{self.interface_no}"] = (link_obj, link_ip_router)
 
     def add_new_host(self, link_name, host_name):
         """Adds new host to the router, link has to be added before"""
 
         if link_name in self.link_conns:
-            new_host = Host(host_name, link_name)
-            self.host_no += 1
-            self.connected_hosts[host_name] = (new_host, link_name)
+            for interface, link in self.interfaces.items():
+                if link[0].name == link_name:
+                    new_host = Host(host_name, link[0])
+                    self.host_no += 1
+                    self.connected_hosts[host_name] = (new_host, link_name)
+                    break
 
     def list_hosts(self):
         """returns a list of the connected hosts"""
@@ -131,6 +220,17 @@ class Router:
             del self.connected_hosts[hostname]
             self.host_no -= 1
             self.link_no -= 1
+            to_be_deleted = []
+
+            for interface, li in self.interfaces.items():
+                if li[0].name == link:
+                    to_be_deleted.append(interface)
+
+            for i in to_be_deleted:
+                del self.interfaces[i]
+
+            self.interface_no -= 1
+
             print(f"{hostname} has been removed from router {self.router_name}")
         else:
             print(f"No such host: {hostname}")
@@ -143,39 +243,73 @@ class Router:
             for name, k in self.connected_routers.items():
                 if k == linkname:
                     del self.connected_routers[name]
-                    print(f"{linkname} link has been reomeved")
+                    print(f"{linkname} link has been removed")
                     self.link_no -= 1
                     break
 
+            to_be_deleted = []
+            for interface, li in self.interfaces.items():
+                if li[0].name == linkname:
+                    to_be_deleted.append(interface)
+
+            for i in to_be_deleted:
+                del self.interfaces[i]
+
+            self.interface_no -= 1
 class Network:
     """creates a network"""
+
     def __init__(self, name=""):
         self.name = name
         self.routers = []
         self.network_generator = NetworkGenerator()
+        self.nets = 0
+
+    def add_link_to_router(self, router_name, link_name, delay=0, bw=40):
+        """adds a link to the router"""
+        r = self.router(router_name)
+        self.nets += 1
+        net = self.nets
+        r.add_link(link_name, net, delay, bw)
+        print(f"Link called {link_name} has been added to the {router_name}...")
 
     def compose_vagrantfile(self, path):
         """generates a vagrantfile"""
 
         for router in self.routers:
             self.network_generator.add_line(router.add_router_to_vagrant())
+            router.generate_bootstrap_file(path)
 
             for hn, v in router.connected_hosts.items():
                 self.network_generator.add_line(v[0].add_host_to_vagrant())
+                v[0].generate_bootstrap_file(path)
 
         self.network_generator.add_line("end")
 
         self.network_generator.save_to_file(path)
 
-    def link_two_router(self, link_name, to_router_name, from_router_name):
+    def link_two_router(self, link_name, new_router_name, owner_router_name):
         """links two router, just a wrapper"""
 
         # adding link to the to_router
-        self.router(to_router_name).add_link(link_name)
+        # default values
+        delay = 0
+        bw = 40
+
+        owner_router = self.router(owner_router_name)
+        for interface, li in owner_router.interfaces.items():
+            if link_name == li[0].name:
+                delay = li[0].delay
+                bw = li[0].bandwidth
+                net = li[0].network.split('.')[2]
+                break
+
+        new_router = self.router(new_router_name)
+        new_router.add_link(link_name, net, delay, bw, True)
 
         # defining the link between the two routers
-        self.router(to_router_name).define_link(link_name, from_router_name)
-        self.router(from_router_name).define_link(link_name, to_router_name)
+        self.router(owner_router_name).define_link(link_name, new_router_name)
+        self.router(new_router_name).define_link(link_name, owner_router_name)
 
     def unlink_two_router(self, link_name, router_name1, router_name2):
         """deletes connections between two routers"""
@@ -205,8 +339,9 @@ class Network:
         all_routers = list(map(lambda x: x.router_name, self.routers))
         return all_routers
 
-    def add_router(self, router_name, router_links, router_hosts):
-        new_router = Router(router_name, router_hosts, router_links)
+    def add_router(self, router_name):
+
+        new_router = Router(router_name)
         self.routers.append(new_router)
         print(f"{router_name} has been added to the network...")
 
@@ -223,7 +358,7 @@ class Network:
     def save_network(self, file_root="./network/pickles", file_name=""):
         """saves the created network to a pickle file"""
 
-        if file_name == "":
+        if file_name == "" or file_name is None:
             file_name = f"{self.name}_network.pickle"
         if not os.path.isdir(file_root):
             os.makedirs(file_root)
@@ -247,6 +382,12 @@ class Network:
 
         print("The loaded network looks like this:")
         self.print_network()
+
+    def add_host_to_router(self, router_name, host_name, link_name):
+        """adds a host to the selected router, the user needs to define the link name"""
+        self.router(router_name).add_new_host(link_name, host_name)
+        print("added host to router...")
+
 
 class NetworkGenerator:
 
@@ -276,3 +417,19 @@ class NetworkGenerator:
         with open(file_root, "w") as f:
             f.write(self.vagrant_file)
 
+
+if __name__ == '__main__':
+
+    n = Network("test")
+    n.add_router("r1")
+    n.print_network()
+    n.add_link_to_router("r1", "netA", 100, 20)
+    n.add_host_to_router("r1", "host1", "netA")
+    n.add_link_to_router("r1", "netB", 0, 30)
+    n.add_host_to_router("r1", "host1", "netB")
+    n.add_router("r2")
+    n.add_link_to_router("r2", "routernetA")
+    n.add_host_to_router("r2", "hostr21", "routernetA")
+    n.add_link_to_router("r2", "connectRouters")
+    n.link_two_router("connectRouters", "r1", "r2")
+    n.compose_vagrantfile("/testfoldaer")

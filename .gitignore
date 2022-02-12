@@ -2,3 +2,4 @@ venv/
 network/
 vagranttest/
 .idea/
+/filename_pi.obj
