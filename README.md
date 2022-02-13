@@ -4,6 +4,8 @@ Spider is a command line tool, for simple network design. With spider the user c
 
 ## Prerequisites
  > Python 3.9
- > click
+## Requiered Python modules
+> click
 
-If you have python preisntalled on your system, create a virtual environment, and run 'pip install click'.
+If you have python preisntalled on your system, create a virtual environment, and run:
+> pip install click.
