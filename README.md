@@ -47,3 +47,5 @@ Run in the terminal:
   start-new
   
   unlink-routers
+## Examples
+Two examples are available in /testnets folder
