@@ -16,34 +16,34 @@ Run in the terminal:
 > spider hi
 
 ## Available commands
-  add-host            Adds a host to the router
+  add-host
   
-  add-link-to-router  Adds a link to the existing router
+  add-link-to-router
   
-  add-router          Adds router to the network
+  add-router
   
-  clear-work          Deletes everything that was previously done
+  clear-work
   
-  composev            composes vagrantfile and saves it to path location
+  composev
   
-  del-host            delete the selected host of the router
+  del-host
   
-  del-link            deletes link of the selected router
+  del-link
   
-  hi                  Just to say hi
+  hi
   
-  link-routers        connects two unconnected routers
+  link-routers
   
-  list-hosts          Lists all hosts of the selected router
+  list-hosts
   
-  list-routers        List the connected routers on the network
+  list-routers
   
-  load-network        Loads in a network which is stored in a pickle file
+  load-network
   
-  print-net           prints out the network
+  print-net
   
-  save-network        saves the created network in a pickle file
+  save-network
   
-  start-new           Creates a new network
+  start-new
   
-  unlink-routers      Deletes link connection between two routers
+  unlink-routers
