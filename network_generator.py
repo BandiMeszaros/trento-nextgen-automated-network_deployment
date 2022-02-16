@@ -417,19 +417,9 @@ class NetworkGenerator:
         with open(file_root, "w") as f:
             f.write(self.vagrant_file)
 
-
 if __name__ == '__main__':
-
-    n = Network("test")
-    n.add_router("r1")
-    n.print_network()
-    n.add_link_to_router("r1", "netA", 100, 20)
-    n.add_host_to_router("r1", "host1", "netA")
-    n.add_link_to_router("r1", "netB", 0, 30)
-    n.add_host_to_router("r1", "host1", "netB")
-    n.add_router("r2")
-    n.add_link_to_router("r2", "routernetA")
-    n.add_host_to_router("r2", "hostr21", "routernetA")
-    n.add_link_to_router("r2", "connectRouters")
-    n.link_two_router("connectRouters", "r1", "r2")
-    n.compose_vagrantfile("/testfoldaer")
+    n = Network("savetest")
+    n.load_network("testfile", "./tests/")
+    n.add_router("r3")
+    n.add_link_to_router("r3","blala")
+    pass
