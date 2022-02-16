@@ -1,7 +1,7 @@
 import pickle
 
 
-f = open("./testn/tesn_network.pickle", "rb")
+f = open("/home/makhbar/trento/network/project/tests/test.pickle", "rb")
 data = pickle.load(f)
 while(1):
     pass
