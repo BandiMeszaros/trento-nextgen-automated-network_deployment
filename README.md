@@ -17,7 +17,7 @@ Open a terminal window and run the following commands:
  
  > pip install -r requierments.txt
  
- Now you have your virtual machine set up. Run > pip freeze if the click module is installed properly.
+ Now you have your virtual machine set up. Run  'pip freeze' if the click module is installed properly.
  
  
 ## Test
@@ -75,5 +75,6 @@ Now you can edit the network or generate a vagrantfile.
 
 1. It is a good practice to clear your working cache before loading or starting a new network. Run: 'spider clear-work' every time before a 'start-new' or a 'load-network' command
 2. If you don't know what a particular command does type 'spider $COMMAND --help'
-3. Sometimes it happens after vagrant up that the set link delays and bandwidths are not applied in this case run 'vagrant reload'
+3. Sometimes it happens after vagrant up that the set link delays and bandwidths are not applied. In this case run 'vagrant reload'
+4. It is a good practice to add the routers first to your network design and then the links and after that the hosts. Because spider only stores those links and hosts which are connected to a router.
 
