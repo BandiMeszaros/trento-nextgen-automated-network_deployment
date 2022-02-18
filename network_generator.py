@@ -416,10 +416,3 @@ class NetworkGenerator:
 
         with open(file_root, "w") as f:
             f.write(self.vagrant_file)
-
-if __name__ == '__main__':
-    n = Network("savetest")
-    n.load_network("testfile", "./tests/")
-    n.add_router("r3")
-    n.add_link_to_router("r3","blala")
-    pass
