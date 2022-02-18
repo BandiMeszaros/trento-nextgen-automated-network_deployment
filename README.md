@@ -17,7 +17,7 @@ Open a terminal window and run the following commands:
  
  > pip install -r requierments.txt
  
- Now you have your virtual machine set up. Run  'pip freeze' if the click module is installed properly.
+ Now you have your virtual machine set up. Run  'pip freeze' to see if the click module is installed properly.
  
  
 ## Test
