@@ -115,6 +115,7 @@ def load_network(config, file_name, file_root="./network/pickles"):
     Loads in a network which is stored in a pickle file
     default
     """
+    _clear_work()
     config.net.load_network(file_name, file_root)
 
 @spider.command()
