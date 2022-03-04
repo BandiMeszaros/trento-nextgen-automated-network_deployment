@@ -15,7 +15,7 @@ Open a terminal window and run the following commands:
  
  > source ./venv/bin/activate
  
- > pip install -r requierments.txt
+ > pip install --editable .
  
  Now you have your virtual machine set up. Run  'pip freeze' to see if the click module is installed properly.
  
